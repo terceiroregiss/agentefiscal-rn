@@ -8,3 +8,4 @@ venv/
 nohup.out
 dashboard.py
 watchdog.sh
+.env.save
