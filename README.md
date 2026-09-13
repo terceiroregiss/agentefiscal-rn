@@ -168,7 +168,7 @@ O relatório PDF inclui:
 ## 👤 Autor
 
 **Terceiro Régis** — [terceiroregis.com.br](https://terceiroregis.com.br)  
-Full Stack Developer & AI Specialist | CTO @ BodePay & InforTech
+Full Stack Developer & AI Specialist
 
 ---
 
