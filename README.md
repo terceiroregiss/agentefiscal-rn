@@ -174,4 +174,8 @@ Full Stack Developer & AI Specialist | CTO @ BodePay & InforTech
 
 ## 📄 Licença
 
-Uso privado. Todos os direitos reservados.
+Este projeto está licenciado sob a [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+
+Você pode usar, copiar e modificar livremente, **desde que não seja para fins comerciais** e que os créditos ao autor sejam mantidos.
+
+© 2026 Terceiro Régis
