@@ -1,5 +1,6 @@
 import os, re, time, random
 from typing import List, Dict
+from datetime import datetime
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PWTimeout
 from dotenv import load_dotenv
 from captcha import resolver_captcha_imagem
@@ -172,12 +173,12 @@ def _coletar_status(page: Page, empresa: Dict) -> Dict:
     """Coleta status com retry humanizado em caso de erro."""
     nome = empresa["nome"]
     cnpj = empresa["cnpj"]
-    print(f"  -> {nome} ({cnpj})")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}]  -> {nome} ({cnpj})")
 
     for tentativa in range(1, MAX_TENTATIVAS + 1):
         try:
             resultado = _tentar_coletar(page, empresa)
-            print(f"     Status: {resultado['status']}")
+            print(f"    Status: {resultado['status']} [{datetime.now().strftime('%H:%M:%S')}]")
             return resultado
 
         except PWTimeout as e:
