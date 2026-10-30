@@ -171,6 +171,81 @@ def _tabela_variacao(lista, cor_seta, seta):
 # GERAR PDF
 # ─────────────────────────────────────────────
 
+
+def gerar_txt(resultados) -> str:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    path = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"RELATORIO FISCAL SEFAZ-RN - {datetime.now().strftime('%d/%m/%Y')}\n")
+        f.write("=" * 60 + "\n\n")
+        ok_c   = sum(1 for r in resultados if r.get("status") == "OK")
+        crit_c = sum(1 for r in resultados if r.get("status") == "CRITICADO")
+        erro_c = sum(1 for r in resultados if r.get("status") == "ERRO")
+        f.write(f"Total: {len(resultados)}  |  OK: {ok_c}  |  Criticado: {crit_c}  |  Erro: {erro_c}\n\n")
+        f.write("-" * 60 + "\n")
+        for i, r in enumerate(resultados, 1):
+            status = r.get("status", "?")
+            nome   = r.get("razao_social") or r.get("nome") or r.get("cnpj", "")
+            cnpj   = r.get("cnpj", "")
+            obs    = r.get("observacao") or r.get("obs") or ""
+            f.write(f"{i:3}. [{status:10}] {nome[:45]:<45}  CNPJ: {cnpj}\n")
+            if obs:
+                f.write(f"       Obs: {obs}\n")
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+    print(f"[log] TXT salvo em {path}")
+    return path
+
+
+def gerar_txt(resultados) -> str:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    path = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"RELATORIO FISCAL SEFAZ-RN - {datetime.now().strftime('%d/%m/%Y')}\n")
+        f.write("=" * 60 + "\n\n")
+        ok_c   = sum(1 for r in resultados if r.get("status") == "OK")
+        crit_c = sum(1 for r in resultados if r.get("status") == "CRITICADO")
+        erro_c = sum(1 for r in resultados if r.get("status") == "ERRO")
+        f.write(f"Total: {len(resultados)}  |  OK: {ok_c}  |  Criticado: {crit_c}  |  Erro: {erro_c}\n\n")
+        f.write("-" * 60 + "\n")
+        for i, r in enumerate(resultados, 1):
+            status = r.get("status", "?")
+            nome   = r.get("razao_social") or r.get("nome") or r.get("cnpj", "")
+            cnpj   = r.get("cnpj", "")
+            obs    = r.get("observacao") or r.get("obs") or ""
+            f.write(f"{i:3}. [{status:10}] {nome[:45]:<45}  CNPJ: {cnpj}\n")
+            if obs:
+                f.write(f"       Obs: {obs}\n")
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+    print(f"[log] TXT salvo em {path}")
+    return path
+
+
+def gerar_txt(resultados) -> str:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    path = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"RELATORIO FISCAL SEFAZ-RN - {datetime.now().strftime('%d/%m/%Y')}\n")
+        f.write("=" * 60 + "\n\n")
+        ok_c   = sum(1 for r in resultados if r.get("status") == "OK")
+        crit_c = sum(1 for r in resultados if r.get("status") == "CRITICADO")
+        erro_c = sum(1 for r in resultados if r.get("status") == "ERRO")
+        f.write(f"Total: {len(resultados)}  |  OK: {ok_c}  |  Criticado: {crit_c}  |  Erro: {erro_c}\n\n")
+        f.write("-" * 60 + "\n")
+        for i, r in enumerate(resultados, 1):
+            status = r.get("status", "?")
+            nome   = r.get("razao_social") or r.get("nome") or r.get("cnpj", "")
+            cnpj   = r.get("cnpj", "")
+            obs    = r.get("observacao") or r.get("obs") or ""
+            f.write(f"{i:3}. [{status:10}] {nome[:45]:<45}  CNPJ: {cnpj}\n")
+            if obs:
+                f.write(f"       Obs: {obs}\n")
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+    print(f"[log] TXT salvo em {path}")
+    return path
+
 def gerar_pdf(resultados: List[Dict], comparacao: Optional[Dict] = None, data_anterior: Optional[str] = None) -> str:
     os.makedirs(LOG_DIR, exist_ok=True)
     agora  = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -406,17 +481,17 @@ def enviar_email(path_pdf: str, resultados: List[Dict], comparacao: Optional[Dic
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     # Anexar TXT de log
-path_txt = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
-if not os.path.exists(path_txt):
-    path_txt = gerar_txt(resultados)
-with open(path_txt, "rb") as f:
-    parte_txt = MIMEBase("text", "plain")
-    parte_txt.set_payload(f.read())
-encoders.encode_base64(parte_txt)
-parte_txt.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(path_txt)}"')
-msg.attach(parte_txt)
+    path_txt = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
+    if not os.path.exists(path_txt):
+        path_txt = gerar_txt(resultados)
+    with open(path_txt, "rb") as f:
+        parte_txt = MIMEBase("text", "plain")
+        parte_txt.set_payload(f.read())
+    encoders.encode_base64(parte_txt)
+    parte_txt.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(path_txt)}"')
+    msg.attach(parte_txt)
 
-with open(path_pdf, "rb") as f:
+    with open(path_pdf, "rb") as f:
         parte = MIMEBase("application", "octet-stream")
         parte.set_payload(f.read())
     encoders.encode_base64(parte)
