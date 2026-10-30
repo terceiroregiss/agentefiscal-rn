@@ -319,7 +319,7 @@ def gerar_pdf(resultados: List[Dict], comparacao: Optional[Dict] = None, data_an
     story.append(Spacer(1, 1*cm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=COR_CINZA))
     story.append(Paragraph(
-        f"Gerado automaticamente — Agente Fiscal RN v1.1 — {agora}",
+        f"Gerado automaticamente — Agente Fiscal RN v2.3.0 — {agora}",
         ParagraphStyle("r", fontSize=7, textColor=COR_CINZA)
     ))
 
@@ -405,7 +405,18 @@ def enviar_email(path_pdf: str, resultados: List[Dict], comparacao: Optional[Dic
     msg["Subject"] = assunto
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    with open(path_pdf, "rb") as f:
+    # Anexar TXT de log
+path_txt = os.path.join(LOG_DIR, f"relatorio_{datetime.now().strftime('%Y-%m-%d')}.txt")
+if not os.path.exists(path_txt):
+    path_txt = gerar_txt(resultados)
+with open(path_txt, "rb") as f:
+    parte_txt = MIMEBase("text", "plain")
+    parte_txt.set_payload(f.read())
+encoders.encode_base64(parte_txt)
+parte_txt.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(path_txt)}"')
+msg.attach(parte_txt)
+
+with open(path_pdf, "rb") as f:
         parte = MIMEBase("application", "octet-stream")
         parte.set_payload(f.read())
     encoders.encode_base64(parte)
