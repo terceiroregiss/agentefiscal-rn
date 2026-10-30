@@ -337,6 +337,12 @@ def enviar_email(path_pdf: str, resultados: List[Dict], comparacao: Optional[Dic
         print("[email] Sem destinatários — pulando.")
         return
 
+    # Evita envio duplicado no mesmo dia
+    flag = f"/root/agente_fiscal/logs/.email_enviado_{datetime.now().strftime('%Y-%m-%d')}"
+    if os.path.exists(flag):
+        print("[email] Já enviado hoje — pulando.")
+        return
+
     hoje   = datetime.now().strftime("%d/%m/%Y")
     ok_c   = sum(1 for r in resultados if r["status"] == "OK")
     crit_c = sum(1 for r in resultados if r["status"] == "CRITICADO")
@@ -411,3 +417,4 @@ def enviar_email(path_pdf: str, resultados: List[Dict], comparacao: Optional[Dic
         s.ehlo(); s.starttls(); s.login(SMTP_USER, SMTP_PASS)
         s.sendmail(SMTP_FROM, DESTINATARIOS, msg.as_bytes())
     print("[email] Enviado!")
+    open(flag, "w").close()

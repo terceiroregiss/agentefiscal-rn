@@ -12,34 +12,157 @@ UVT_USUARIO = os.getenv("UVT_USUARIO", "")
 UVT_SENHA   = os.getenv("UVT_SENHA", "")
 HEADLESS    = os.getenv("HEADLESS", "true").lower() == "true"
 
-MAX_TENTATIVAS = 3  # retry por empresa
+MAX_TENTATIVAS = 5
 
 
 def _pausa(minimo=0.8, maximo=2.2):
-    """Pausa aleatória humanizada."""
     time.sleep(random.uniform(minimo, maximo))
 
 
-def _digitar_campo(page, selector, value):
+def _aguardar_overlay(page: Page, timeout=30000):
+    try:
+        page.wait_for_selector(
+            'div[ng-if="busy"].loading-overlay',
+            state="hidden",
+            timeout=timeout
+        )
+    except Exception:
+        pass
+    _pausa(0.3, 0.6)
+
+
+def _fechar_modais(page: Page):
+    try:
+        page.locator('button:has-text("Fechar")').first.click(timeout=2000)
+        _pausa(0.3, 0.6)
+        return
+    except:
+        pass
+    try:
+        page.keyboard.press("Escape")
+        _pausa(0.3, 0.5)
+    except:
+        pass
+    try:
+        page.evaluate("""
+(function() {
+    var btns = Array.from(document.querySelectorAll('button'));
+    var btn = btns.find(b => b.textContent.trim() === 'Fechar' || b.textContent.trim() === '×' || b.classList.contains('close'));
+    if (btn) btn.click();
+})();
+""")
+        _pausa(0.3, 0.5)
+    except:
+        pass
+
+
+def _digitar_campo_js(page: Page, field_id: str, value: str):
+    page.evaluate("""
+([id, val]) => {
+    var el = document.getElementById(id) || document.querySelector('[name="' + id + '"]');
+    if (!el) return;
+    el.focus();
+    var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    nativeInputValueSetter.call(el, val);
+    el.dispatchEvent(new Event('input',  {bubbles: true}));
+    el.dispatchEvent(new Event('change', {bubbles: true}));
+    el.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
+}
+""", [field_id, value])
+    _pausa(0.2, 0.4)
+
+
+def _digitar_campo(page: Page, selector: str, value: str):
+    campo_id = None
+    campo_name = None
+    for part in selector.split(","):
+        part = part.strip()
+        if part.startswith("#"):
+            campo_id = part[1:]
+            break
+        m = re.search(r'name=["\']([\^"\'}]+)["\']', part)
+        if m:
+            campo_name = m.group(1)
+
     try:
         el = page.locator(selector).first
-        el.click(timeout=5000)
+        el.click(timeout=3000)
         el.fill("")
         _pausa(0.1, 0.3)
         page.keyboard.type(value, delay=random.randint(60, 120))
         _pausa(0.2, 0.5)
+        return
     except Exception as e:
-        print(f"  [warn] campo {selector}: {e}")
+        print(f"  [warn] click falhou em '{selector}', usando JS: {str(e)[:60]}")
+
+    lookup = campo_id or campo_name
+    if lookup:
+        _digitar_campo_js(page, lookup, value)
+    else:
+        try:
+            page.locator(selector).first.fill(value)
+        except Exception as e2:
+            print(f"  [warn] campo {selector} falhou também no fill: {e2}")
+
+
+def _clicar_usuario_senha(page: Page) -> bool:
+    try:
+        btn = page.locator('button:has-text("Usuário e senha"), a:has-text("Usuário e senha")').first
+        btn.wait_for(state="visible", timeout=8000)
+        btn.click()
+        _pausa(1.5, 3)
+        try:
+            page.wait_for_selector('#code, input[name="code"]', state="visible", timeout=5000)
+            print("  [login] Formulário apareceu após click Playwright")
+            return True
+        except:
+            pass
+    except Exception as e:
+        print(f"  [login] Click Playwright falhou: {e}")
+
+    try:
+        page.evaluate("""
+(function() {
+    var btns = Array.from(document.querySelectorAll('button, a'));
+    var btn = btns.find(b => b.textContent.trim().includes('Usuário e senha'));
+    if (btn) {
+        btn.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        btn.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
+        btn.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+    }
+})();
+""")
+        _pausa(2, 4)
+        try:
+            page.wait_for_selector('#code, input[name="code"]', state="visible", timeout=5000)
+            print("  [login] Formulário apareceu após JS events")
+            return True
+        except:
+            pass
+    except:
+        pass
+
+    return False
 
 
 def _fazer_login(page: Page):
     print("[login] Acessando UVT...")
-    page.goto(UVT_URL, wait_until="domcontentloaded", timeout=30000)
-    _pausa(3, 5)
-    page.locator('button:has-text("Usuário e senha"), a:has-text("Usuário e senha")').first.click()
-    _pausa(1.5, 3)
-    page.wait_for_selector('#code, input[name="code"]', timeout=10000)
+    page.goto(UVT_URL, wait_until="domcontentloaded", timeout=60000)
+    _pausa(4, 7)
+
+    for tentativa_btn in range(5):
+        print(f"  [login] Tentando abrir formulário ({tentativa_btn+1}/5)...")
+        if _clicar_usuario_senha(page):
+            break
+        print(f"  [login] Formulário não apareceu, recarregando...")
+        page.reload(wait_until="domcontentloaded", timeout=60000)
+        _pausa(4, 6)
+    else:
+        page.screenshot(path="/tmp/login_sem_botao.png")
+        raise RuntimeError("Formulário de login não apareceu após 5 tentativas")
+
     _pausa(0.8, 1.5)
+
     for tentativa in range(1, 6):
         print(f"  [login] Tentativa {tentativa}/5...")
         _digitar_campo(page, '#code, input[name="code"]', UVT_USUARIO)
@@ -47,9 +170,9 @@ def _fazer_login(page: Page):
         _digitar_campo(page, '#password, input[name="password"]', UVT_SENHA)
         _pausa(0.3, 0.7)
         texto_captcha = resolver_captcha_imagem(page)
-        _digitar_campo(page, '#captcha, input[name="captcha"]', texto_captcha)
-        _pausa(0.3, 0.6)
         print(f"  [login] Captcha: {texto_captcha}")
+        _digitar_campo_js(page, "captcha", texto_captcha)
+        _pausa(0.3, 0.6)
         page.evaluate("""
 (function() {
     var btns = document.querySelectorAll('button');
@@ -73,17 +196,39 @@ def _fazer_login(page: Page):
             page.locator('text=solicitar nova imagem').first.click(timeout=3000)
             _pausa(1, 2)
         except:
-            page.reload(wait_until="domcontentloaded", timeout=15000)
-            _pausa(2.5, 4)
-            page.locator('button:has-text("Usuário e senha")').first.click()
-            _pausa(1.5, 2.5)
+            try:
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+                _pausa(3, 5)
+                _clicar_usuario_senha(page)
+                _pausa(1, 2)
+            except:
+                pass
     raise RuntimeError("Login falhou após 5 tentativas.")
 
 
 def _listar_empresas(page: Page) -> List[Dict]:
     print("[empresas] Coletando lista...")
-    page.locator('text=Selecionar uma empresa').first.click()
-    _pausa(1.5, 3)
+    _aguardar_overlay(page, timeout=30000)
+
+    abriu = False
+    for tentativa in range(5):
+        try:
+            page.locator('a:has-text("Selecionar uma empresa"), button:has-text("Selecionar uma empresa")').first.click(timeout=5000)
+        except:
+            pass
+        _pausa(1.5, 3)
+        try:
+            page.wait_for_selector('table tbody tr', timeout=8000)
+            abriu = True
+            break
+        except:
+            print(f"  [empresas] Tabela não apareceu, tentativa {tentativa+1}/5...")
+            _aguardar_overlay(page, timeout=15000)
+
+    if not abriu:
+        page.screenshot(path="/tmp/erro_lista_empresas.png")
+        raise RuntimeError("Modal de empresas abriu mas tabela não apareceu")
+
     empresas = []
     linhas = page.locator("table tbody tr").all()
     for linha in linhas:
@@ -107,70 +252,102 @@ def _listar_empresas(page: Page) -> List[Dict]:
 
 
 def _abrir_modal(page: Page):
-    try:
-        page.locator('button:has-text("Fechar")').first.click(timeout=2000)
-        _pausa(0.4, 0.8)
-    except:
-        pass
-    try:
-        page.locator('button:has-text("Clique para trocar de empresa")').first.click(timeout=3000)
+    _fechar_modais(page)
+    _aguardar_overlay(page, timeout=45000)
+
+    for tentativa in range(5):
+        try:
+            page.locator('button:has-text("Clique para trocar de empresa"), a:has-text("Clique para trocar de empresa")').first.click(timeout=3000)
+        except:
+            try:
+                page.locator('a:has-text("Selecionar uma empresa"), button:has-text("Selecionar uma empresa")').first.click(timeout=3000)
+            except:
+                pass
+        _aguardar_overlay(page)
         _pausa(1.5, 2.5)
-        page.wait_for_selector('table tbody tr', timeout=5000)
-        return
-    except:
-        pass
+        try:
+            page.wait_for_selector('table tbody tr', timeout=8000)
+            return
+        except:
+            print(f"  [modal] Tabela não apareceu, tentativa {tentativa+1}/5...")
+            _fechar_modais(page)
+            _aguardar_overlay(page, timeout=15000)
+
     try:
-        page.locator('text=Selecionar uma empresa').first.click(timeout=3000)
-        _pausa(1.5, 2.5)
-        page.wait_for_selector('table tbody tr', timeout=5000)
-        return
+        ts = datetime.now().strftime('%H%M%S')
+        path = f"/tmp/erro_modal_{ts}.png"
+        page.screenshot(path=path)
+        print(f"  [debug] Screenshot: {path}")
     except:
         pass
     raise RuntimeError("Não conseguiu abrir o modal de empresas")
 
 
 def _tentar_coletar(page: Page, empresa: Dict) -> Dict:
-    """Uma tentativa de coletar o status de uma empresa."""
     nome = empresa["nome"]
     cnpj = empresa["cnpj"]
     resultado = {"nome": nome, "cnpj": cnpj, "ie": empresa.get("ie", ""), "status": "ERRO", "obs": ""}
 
-    # Abre modal e seleciona empresa
     _abrir_modal(page)
+    _aguardar_overlay(page)
+
     try:
         page.locator(f'table tbody tr:has-text("{cnpj}") a').first.click(timeout=5000)
     except:
         page.locator(f'table tbody tr:has-text("{nome[:20]}") a').first.click(timeout=5000)
+
+    _aguardar_overlay(page, timeout=45000)
     _pausa(1.5, 3)
 
-    # Clica no ícone $ (Débitos)
-    page.locator('button[uib-tooltip="Débitos"]').first.click(timeout=8000)
-    page.wait_for_selector('text=Relatório Sintético de Débitos', timeout=10000)
+    _aguardar_overlay(page)
+    page.locator('button[uib-tooltip="Débitos"]').first.click(timeout=20000)
+    page.wait_for_selector('text=Relatório Sintético de Débitos', timeout=20000)
     _pausa(0.6, 1.2)
 
-    # Clica em Extrato Fiscal
-    page.locator('.modal-content a:has-text("Extrato Fiscal"), .modal a:has-text("Extrato Fiscal"), a:has-text("Extrato Fiscal")').first.click(timeout=8000)
-    page.wait_for_selector('text=Extrato Fiscal do Contribuinte', timeout=12000)
+    _aguardar_overlay(page)
+    page.locator('.modal-content a:has-text("Extrato Fiscal"), .modal a:has-text("Extrato Fiscal"), a:has-text("Extrato Fiscal")').first.click(timeout=15000)
+    page.wait_for_selector('text=Extrato Fiscal do Contribuinte', timeout=25000)
     _pausa(0.8, 1.5)
 
-    # Captura status
     html = page.content()
     if re.search(r'CRITICADO', html, re.IGNORECASE):
         resultado["status"] = "CRITICADO"
     elif re.search(r'\bOK\b', html, re.IGNORECASE):
         resultado["status"] = "OK"
 
-    try:
-        page.locator('button:has-text("Fechar")').first.click(timeout=3000)
-        _pausa(0.4, 0.8)
-    except:
-        pass
-
+    _fechar_modais(page)
+    _aguardar_overlay(page)
     return resultado
 
 
+def _recuperar_pagina(page: Page):
+    print("     [recuperar] Navegando de volta à home...")
+    try:
+        page.goto(UVT_URL, wait_until="domcontentloaded", timeout=30000)
+        _pausa(2, 4)
+        _aguardar_overlay(page, timeout=30000)
+
+        try:
+            page.wait_for_selector(
+                'a:has-text("Selecionar uma empresa"), button:has-text("Clique para trocar")',
+                timeout=8000
+            )
+            print("     [recuperar] Sessão ativa OK.")
+            return True
+        except:
+            pass
+
+        print("     [recuperar] Sessão expirou, refazendo login...")
+        _fazer_login(page)
+        print("     [recuperar] Relogado OK.")
+        return True
+
+    except Exception as e:
+        print(f"     [recuperar] Falhou: {e}")
+        return False
+
+
 def _coletar_status(page: Page, empresa: Dict) -> Dict:
-    """Coleta status com retry humanizado em caso de erro."""
     nome = empresa["nome"]
     cnpj = empresa["cnpj"]
     print(f"[{datetime.now().strftime('%H:%M:%S')}]  -> {nome} ({cnpj})")
@@ -187,12 +364,9 @@ def _coletar_status(page: Page, empresa: Dict) -> Dict:
                 espera = random.uniform(4, 8) * tentativa
                 print(f"     [retry {tentativa}/{MAX_TENTATIVAS}] Timeout — aguardando {espera:.1f}s...")
                 time.sleep(espera)
-                # Fecha qualquer modal aberto antes de tentar de novo
-                try:
-                    page.locator('button:has-text("Fechar")').first.click(timeout=2000)
-                    _pausa(0.5, 1)
-                except:
-                    pass
+                _fechar_modais(page)
+                _aguardar_overlay(page)
+                _recuperar_pagina(page)
             else:
                 print(f"     ERRO: {nome}: timeout após {MAX_TENTATIVAS} tentativas")
                 return {"nome": nome, "cnpj": cnpj, "ie": empresa.get("ie", ""), "status": "ERRO", "obs": obs}
@@ -203,16 +377,13 @@ def _coletar_status(page: Page, empresa: Dict) -> Dict:
                 espera = random.uniform(3, 7) * tentativa
                 print(f"     [retry {tentativa}/{MAX_TENTATIVAS}] Erro — aguardando {espera:.1f}s...")
                 time.sleep(espera)
-                try:
-                    page.locator('button:has-text("Fechar")').first.click(timeout=2000)
-                    _pausa(0.5, 1)
-                except:
-                    pass
+                _fechar_modais(page)
+                _aguardar_overlay(page)
+                _recuperar_pagina(page)
             else:
                 print(f"     ERRO: {nome}: {e}")
                 return {"nome": nome, "cnpj": cnpj, "ie": empresa.get("ie", ""), "status": "ERRO", "obs": obs}
 
-    # Nunca deve chegar aqui, mas por segurança
     return {"nome": nome, "cnpj": cnpj, "ie": empresa.get("ie", ""), "status": "ERRO", "obs": "Max tentativas atingido"}
 
 
@@ -227,12 +398,11 @@ def coletar_todas_empresas() -> List[Dict]:
             for i, emp in enumerate(empresas):
                 print(f"[{i+1}/{len(empresas)}]", end=" ")
                 resultados.append(_coletar_status(page, emp))
-                # Pausa humanizada entre empresas
                 _pausa(0.8, 2.0)
         except Exception as e:
             print(f"[ERRO CRITICO] {e}")
             try:
-                page.screenshot(path="/tmp/erro.png")
+                page.screenshot(path="/tmp/erro_critico.png")
             except:
                 pass
         finally:
