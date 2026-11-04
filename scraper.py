@@ -283,6 +283,79 @@ def _abrir_modal(page: Page):
     raise RuntimeError("Não conseguiu abrir o modal de empresas")
 
 
+
+def _capturar_pendencias(page) -> list:
+    """Extrai pendencias de obrigacoes acessorias via JavaScript."""
+    try:
+        dados = page.evaluate("""() => {
+    var result = [];
+    var allRows = document.querySelectorAll('tr[ng-repeat]');
+    var rows = [];
+    for (var i = 0; i < allRows.length; i++) {
+        var nr = allRows[i].getAttribute('ng-repeat') || '';
+        if (nr.indexOf('obrigacoesPendencias') !== -1) rows.push(allRows[i]);
+    }
+    if (rows.length === 0) return result;
+    for (var j = 0; j < rows.length; j++) {
+        var row = rows[j];
+        var strong = row.querySelector('strong');
+        if (strong) {
+            var txt = strong.innerText.trim();
+            if (txt.length > 2) result.push({categoria: txt, itens: []});
+        } else {
+            var tds = row.querySelectorAll('td');
+            for (var k = 0; k < tds.length; k++) {
+                var ngif = tds[k].getAttribute('ng-if') || '';
+                if (ngif.indexOf('!=') !== -1) {
+                    var itxt = tds[k].innerText.trim();
+                    if (itxt.length > 2 && result.length > 0) {
+                        result[result.length - 1].itens.push(itxt);
+                    }
+                }
+            }
+        }
+    }
+    return result.filter(function(c) { return c.itens.length > 0; });
+}""")
+        print(f"    [pendencias] {len(dados)} categoria(s)")
+        return dados
+    except Exception as e:
+        print(f"    [pendencias] Erro: {e}")
+        return []
+
+
+def _capturar_debitos_vencidos(page) -> dict:
+    """Extrai debitos vencidos (Obrigacoes Principais) com total."""
+    try:
+        dados = page.evaluate("""() => {
+    var rows = document.querySelectorAll('tr[ng-repeat-start]');
+    var itens = [];
+    for (var i = 0; i < rows.length; i++) {
+        var nr = rows[i].getAttribute('ng-repeat-start') || '';
+        if (nr.indexOf('debitosVencidos.debitos') === -1) continue;
+        var tds = rows[i].querySelectorAll('td');
+        if (tds.length < 2) continue;
+        var data  = tds[0].innerText.trim();
+        var valor = tds[1].innerText.trim();
+        if (data && valor) itens.push({data: data, valor: valor});
+    }
+    return itens;
+}""")
+        # calcula total convertendo formato BR para float
+        total = 0.0
+        for item in dados:
+            try:
+                v = item["valor"].replace(".", "").replace(",", ".")
+                total += float(v)
+            except:
+                pass
+        resultado = {"itens": dados, "total": total}
+        print(f"    [debitos_vencidos] {len(dados)} debito(s) | Total: R$ {total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        return resultado
+    except Exception as e:
+        print(f"    [debitos_vencidos] Erro: {e}")
+        return {"itens": [], "total": 0.0}
+
 def _tentar_coletar(page: Page, empresa: Dict) -> Dict:
     nome = empresa["nome"]
     cnpj = empresa["cnpj"]
@@ -312,6 +385,8 @@ def _tentar_coletar(page: Page, empresa: Dict) -> Dict:
     html = page.content()
     if re.search(r'CRITICADO', html, re.IGNORECASE):
         resultado["status"] = "CRITICADO"
+        resultado["pendencias"]      = _capturar_pendencias(page)
+        resultado["debitos_vencidos"] = _capturar_debitos_vencidos(page)
     elif re.search(r'\bOK\b', html, re.IGNORECASE):
         resultado["status"] = "OK"
 

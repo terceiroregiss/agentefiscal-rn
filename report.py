@@ -192,7 +192,7 @@ def gerar_txt(resultados) -> str:
             if obs:
                 f.write(f"       Obs: {obs}\n")
         f.write("\n" + "=" * 60 + "\n")
-        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.5.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
     print(f"[log] TXT salvo em {path}")
     return path
 
@@ -217,7 +217,7 @@ def gerar_txt(resultados) -> str:
             if obs:
                 f.write(f"       Obs: {obs}\n")
         f.write("\n" + "=" * 60 + "\n")
-        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.5.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
     print(f"[log] TXT salvo em {path}")
     return path
 
@@ -242,9 +242,75 @@ def gerar_txt(resultados) -> str:
             if obs:
                 f.write(f"       Obs: {obs}\n")
         f.write("\n" + "=" * 60 + "\n")
-        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.3.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+        f.write(f"Gerado automaticamente - Agente Fiscal RN v2.5.0 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
     print(f"[log] TXT salvo em {path}")
     return path
+
+
+
+def _bloco_pendencias(empresa: Dict) -> list:
+    """Flowables com pendencias de obrigacoes acessorias de uma empresa CRITICADA."""
+    elementos = []
+    pendencias = empresa.get("pendencias", [])
+    if not pendencias:
+        return elementos
+    elementos.append(Paragraph(
+        empresa["nome"],
+        ParagraphStyle("emp_pend", fontSize=10, fontName="Helvetica-Bold",
+                       textColor=COR_HEADER, spaceAfter=2, spaceBefore=8)
+    ))
+    elementos.append(Paragraph(
+        "CNPJ: {}   IE: {}".format(empresa["cnpj"], empresa.get("ie", "")),
+        ParagraphStyle("emp_sub_p", fontSize=8, fontName="Helvetica",
+                       textColor=COR_CINZA, spaceAfter=4)
+    ))
+    for pend in pendencias:
+        elementos.append(Paragraph(
+            pend["categoria"],
+            ParagraphStyle("cat_pend", fontSize=9, fontName="Helvetica-Bold",
+                           textColor=COR_AZUL, spaceAfter=2, spaceBefore=4)
+        ))
+        for item in pend.get("itens", []):
+            elementos.append(Paragraph(
+                "• " + item,
+                ParagraphStyle("item_pend", fontSize=8, fontName="Helvetica",
+                               textColor=COR_CINZA, leftIndent=12, spaceAfter=1)
+            ))
+    elementos.append(HRFlowable(width="100%", thickness=0.3, color=colors.HexColor("#dddddd")))
+    elementos.append(Spacer(1, 0.15*cm))
+    return elementos
+
+
+def _bloco_debitos_vencidos(empresa: Dict) -> list:
+    """Flowables sinteticos com debitos vencidos (Obrigacoes Principais)."""
+    elementos = []
+    dv = empresa.get("debitos_vencidos", {})
+    itens = dv.get("itens", [])
+    total = dv.get("total", 0.0)
+    if not itens:
+        return elementos
+    total_fmt = "R$ {:,.2f}".format(total).replace(",", "X").replace(".", ",").replace("X", ".")
+    dados = [[
+        empresa["nome"],
+        f"{len(itens)} débito(s)",
+        total_fmt,
+    ]]
+    t = Table(dados, colWidths=[9*cm, 3.5*cm, 4.5*cm])
+    t.setStyle(TableStyle([
+        ("FONTNAME",      (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE",      (0,0), (-1,-1), 9),
+        ("FONTNAME",      (0,0), (0,-1),  "Helvetica-Bold"),
+        ("TEXTCOLOR",     (2,0), (2,-1),  COR_VERMELHO),
+        ("FONTNAME",      (2,0), (2,-1),  "Helvetica-Bold"),
+        ("ALIGN",         (1,0), (-1,-1), "RIGHT"),
+        ("ROWBACKGROUNDS",(0,0), (-1,-1), [colors.white, COR_ZEBRA]),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#cccccc")),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("LEFTPADDING",   (0,0), (-1,-1), 6),
+    ]))
+    elementos.append(t)
+    return elementos
 
 def gerar_pdf(resultados: List[Dict], comparacao: Optional[Dict] = None, data_anterior: Optional[str] = None) -> str:
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -365,6 +431,22 @@ def gerar_pdf(resultados: List[Dict], comparacao: Optional[Dict] = None, data_an
         story.append(_tabela(crit_l, COR_VERMELHO))
         story.append(Spacer(1, 0.5*cm))
 
+    # ── DETALHAMENTO DE PENDÊNCIAS ACESSÓRIAS ──
+    crit_com_pend = [r for r in crit_l if r.get("pendencias")]
+    if crit_com_pend:
+        _header_secao(story, "DETALHAMENTO DE PENDÊNCIAS POR EMPRESA", COR_VERMELHO)
+        for emp in crit_com_pend:
+            story.extend(_bloco_pendencias(emp))
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── DETALHAMENTO DE DÉBITOS VENCIDOS ──
+    crit_com_dv = [r for r in crit_l if r.get("debitos_vencidos", {}).get("itens")]
+    if crit_com_dv:
+        _header_secao(story, "DÉBITOS VENCIDOS POR EMPRESA", COR_VERMELHO)
+        for emp in crit_com_dv:
+            story.extend(_bloco_debitos_vencidos(emp))
+        story.append(Spacer(1, 0.3*cm))
+
     if ok_l:
         _header_secao(story, "SITUACAO FISCAL: OK", COR_VERDE)
         story.append(_tabela(ok_l, COR_VERDE))
@@ -394,7 +476,7 @@ def gerar_pdf(resultados: List[Dict], comparacao: Optional[Dict] = None, data_an
     story.append(Spacer(1, 1*cm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=COR_CINZA))
     story.append(Paragraph(
-        f"Gerado automaticamente — Agente Fiscal RN v2.3.0 — {agora}",
+        f"Gerado automaticamente — Agente Fiscal RN v2.5.0 — {agora}",
         ParagraphStyle("r", fontSize=7, textColor=COR_CINZA)
     ))
 
